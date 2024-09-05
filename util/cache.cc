@@ -77,8 +77,12 @@ class HandleTable {
   }
 
   LRUHandle* Insert(LRUHandle* h) {
+    // 尝试在hash表中找到目标值的节点，返回它的双重指针
+    // 如果没有相同的key(或key的hash)，则返回链表的最后一个节点的双重指针
     LRUHandle** ptr = FindPointer(h->key(), h->hash);
+    // 老节点
     LRUHandle* old = *ptr;
+    // 把新节点插到老节点后面
     h->next_hash = (old == nullptr ? nullptr : old->next_hash);
     *ptr = h;
     if (old == nullptr) {
@@ -112,6 +116,10 @@ class HandleTable {
   // Return a pointer to slot that points to a cache entry that
   // matches key/hash.  If there is no such cache entry, return a
   // pointer to the trailing slot in the corresponding linked list.
+
+  // 本方法是实现的精妙所在，返回的是本节点的指针的指针
+  // 即返回了前置节点的next_hash指针的地址
+  // 这样方便修改前置节点的next指向、方便操作next原来指向的节点
   LRUHandle** FindPointer(const Slice& key, uint32_t hash) {
     LRUHandle** ptr = &list_[hash & (length_ - 1)];
     while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
@@ -273,7 +281,7 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
   LRUHandle* e =
       reinterpret_cast<LRUHandle*>(malloc(sizeof(LRUHandle) - 1 + key.size()));
   e->value = value;
-  e->deleter = deleter;
+  e->deleter = deleter; // 用来在释放的时候做资源回收
   e->charge = charge;
   e->key_length = key.size();
   e->hash = hash;
@@ -286,12 +294,15 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
     e->in_cache = true;
     LRU_Append(&in_use_, e);
     usage_ += charge;
+    // 如果table_.Insert 返回了一个空指针，说明hash表中原先是没有这个元素的
+    // 如果原先有这个元素，则是替换，需要在LRU 链表中删除原来的数据
     FinishErase(table_.Insert(e));
   } else {  // don't cache. (capacity_==0 is supported and turns off caching.)
     // next is read by key() in an assert, so it must be initialized
     e->next = nullptr;
   }
   while (usage_ > capacity_ && lru_.next != &lru_) {
+    // lru的链表尾，踢出去
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);
     bool erased = FinishErase(table_.Remove(old->key(), old->hash));
