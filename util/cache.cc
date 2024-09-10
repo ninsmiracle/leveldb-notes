@@ -137,13 +137,18 @@ class HandleTable {
     memset(new_list, 0, sizeof(new_list[0]) * new_length);
     uint32_t count = 0;
     for (uint32_t i = 0; i < length_; i++) {
+      // 一个一个桶挪
       LRUHandle* h = list_[i];
+      // 遍历重新计算这个桶内链表的全部节点的新hash
       while (h != nullptr) {
         LRUHandle* next = h->next_hash;
         uint32_t hash = h->hash;
+        // prt为新桶的链表表头
         LRUHandle** ptr = &new_list[hash & (new_length - 1)];
         h->next_hash = *ptr;
+        // 新桶的表头变为了h节点
         *ptr = h;
+        // 移动处理链表的下一个节点
         h = next;
         count++;
       }
