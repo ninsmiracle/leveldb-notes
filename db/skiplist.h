@@ -241,6 +241,7 @@ int SkipList<Key, Comparator>::RandomHeight() {
   // Increase height with probability 1 in kBranching
   static const unsigned int kBranching = 4;
   int height = 1;
+  // 每层以1/4概率增加
   while (height < kMaxHeight && rnd_.OneIn(kBranching)) {
     height++;
   }
@@ -267,6 +268,8 @@ SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
       // Keep searching in this list
       x = next;
     } else {
+      // 在Insert中调用，表示该层次的最接近且小于目标key的x节点。
+      // 记录到前置节点数组
       if (prev != nullptr) prev[level] = x;
       if (level == 0) {
         return next;
@@ -360,7 +363,12 @@ void SkipList<Key, Comparator>::Insert(const Key& key) {
   for (int i = 0; i < height; i++) {
     // NoBarrier_SetNext() suffices since we will add a barrier when
     // we publish a pointer to "x" in prev[i].
+    // 为了保证并发读的正确性，一定要先设置本节点指针，再设置原条表中节点（prev）指针.
+    // 这里x连接后置指针节点的时候还不会对其他读线程可见，所以这里可以是noBarrier的
     x->NoBarrier_SetNext(i, prev[i]->NoBarrier_Next(i));
+
+    // 通过前置节点数组，可以快速访问到可插入X位置的前置节点。方便连接
+    // 这里连上前置节点指针，相当于是“发布”了该节点指针，可以被其他读线程识别到
     prev[i]->SetNext(i, x);
   }
 }
